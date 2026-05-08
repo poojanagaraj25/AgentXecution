@@ -1,57 +1,34 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from agents.orchestrator import run_system
+from memory import store
 
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5179"],
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class TranscriptRequest(BaseModel):
-    transcript: str
+@app.get("/")
+def home():
+    return {"message": "Backend Running"}
 
-@app.post("/extract-tasks")
-async def extract_tasks(request: TranscriptRequest):
-    transcript = request.transcript
-    tasks = []
+@app.get("/heartbeat")
+def heartbeat():
+    return {"status": "alive"}
 
-    # Split transcript by "."
-    sentences = [s.strip() for s in transcript.split(".") if s.strip()]
+@app.post("/generate")
+def generate(data: dict):
+    text = data.get("transcript", "")
 
-    for sentence in sentences:
-        words = sentence.split()
-        if not words:
-            continue
+    tasks, warnings, simulation, quality, execution = run_system(text)
 
-        # First word = owner
-        owner = words[0]
-
-        # Extract deadline
-        deadline = "Not specified"
-        if "by" in sentence.lower():
-            # Find "by" and take words after it
-            by_index = sentence.lower().find("by")
-            after_by = sentence[by_index + 2:].strip()
-            deadline_words = after_by.split()[:3]  # Take first 3 words
-            deadline = " ".join(deadline_words)
-        elif "tomorrow" in sentence.lower():
-            deadline = "Tomorrow"
-        elif "tonight" in sentence.lower():
-            deadline = "Tonight"
-
-        # Create task object
-        task = {
-            "task": sentence,
-            "owner": owner,
-            "deadline": deadline,
-            "status": "Pending"
-        }
-        tasks.append(task)
-
-    return {"tasks": tasks}
+    return {
+        "tasks": tasks,
+        "warnings": warnings,
+        "simulation": simulation,
+        "quality": quality
+    }
